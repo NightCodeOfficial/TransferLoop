@@ -1,0 +1,19 @@
+# TransferLoop recommended exclusions
+# Edit this file manually or use the app's project tree.
+
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.tmp
+.cache/
+build/
+dist/
+node_modules/
+.env
+.env.*
+*.pem
+*.key

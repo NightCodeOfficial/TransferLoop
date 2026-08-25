@@ -1,0 +1,34 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# TransferLoop local AI context
+.aimemory
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Logs / temporary files
+*.log
+*.tmp
+.cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated archives
+*.zip
