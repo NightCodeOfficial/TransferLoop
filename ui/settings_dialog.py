@@ -82,6 +82,10 @@ class SettingsDialog(QDialog):
         self.delete_check = QCheckBox("Delete an imported response ZIP after accepted changes are safely applied")
         self.delete_check.setChecked(settings.delete_import_zip_after_apply)
         general_layout.addWidget(self.delete_check)
+
+        self.confirm_remove_check = QCheckBox("Confirm before removing a project from Recent projects")
+        self.confirm_remove_check.setChecked(settings.confirm_recent_project_removal)
+        general_layout.addWidget(self.confirm_remove_check)
         general_layout.addStretch(1)
         tabs.addTab(general, "General")
 
@@ -213,6 +217,7 @@ class SettingsDialog(QDialog):
         self.settings.export_folder = self.export_edit.text().strip() or str(Path.home() / "Downloads")
         self.settings.monitor_downloads = self.monitor_check.isChecked()
         self.settings.delete_import_zip_after_apply = self.delete_check.isChecked()
+        self.settings.confirm_recent_project_removal = self.confirm_remove_check.isChecked()
         self.settings.save()
         if self.model:
             self.model.state.project_context = self.context_edit.toPlainText().strip()

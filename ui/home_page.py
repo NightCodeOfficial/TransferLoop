@@ -6,15 +6,16 @@ from PySide6.QtCore import QSize, Qt, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QPushButton, QToolButton, QVBoxLayout, QWidget
+    QListWidgetItem, QMessageBox, QPushButton, QToolButton, QVBoxLayout, QWidget, QCheckBox
 )
 
 from core.storage import AppSettings
-from .icons import copy_icon, folder_icon
+from .icons import copy_icon, folder_icon, trash_icon
 
 
 class RecentProjectCard(QFrame):
     open_requested = Signal(str)
+    remove_requested = Signal(str)
 
     def __init__(self, project_path: str, parent=None):
         super().__init__(parent)
@@ -30,10 +31,16 @@ class RecentProjectCard(QFrame):
         layout.setContentsMargins(17, 13, 13, 13)
         layout.setSpacing(7)
 
+        name_row = QHBoxLayout()
+        name_row.setContentsMargins(0, 0, 0, 0)
+        name_row.setSpacing(8)
+
         name = QLabel(path.name)
         name.setObjectName("RecentProjectName")
         name.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        layout.addWidget(name)
+        name_row.addWidget(name, 1)
+
+        layout.addLayout(name_row)
 
         path_row = QHBoxLayout()
         path_row.setContentsMargins(0, 0, 0, 0)
@@ -60,6 +67,14 @@ class RecentProjectCard(QFrame):
         folder_btn.setToolTip("Open project folder")
         folder_btn.clicked.connect(self.open_folder)
         path_row.addWidget(folder_btn)
+
+        remove_btn = QToolButton()
+        remove_btn.setObjectName("DangerIconButton")
+        remove_btn.setIcon(trash_icon())
+        remove_btn.setIconSize(QSize(18, 18))
+        remove_btn.setToolTip("Remove from recent projects")
+        remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.project_path))
+        path_row.addWidget(remove_btn)
 
         layout.addLayout(path_row)
 
@@ -127,11 +142,42 @@ class HomePage(QWidget):
 
             card = RecentProjectCard(project)
             card.open_requested.connect(self.project_requested.emit)
+            card.remove_requested.connect(self.remove_recent_project)
             self.recent.setItemWidget(item, card)
 
         if valid != self.settings.recent_projects:
             self.settings.recent_projects = valid
             self.settings.save()
+
+    def remove_recent_project(self, project_path: str):
+        if self.settings.confirm_recent_project_removal:
+            path = Path(project_path)
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle("Remove project")
+            dialog.setIcon(QMessageBox.Icon.Warning)
+            dialog.setText("Are you sure you want to remove this project?")
+            dialog.setInformativeText(
+                f'"{path.name}" will be removed from Recent projects. '
+                "The project folder and TransferLoop's saved project history will not be deleted."
+            )
+
+            dont_ask = QCheckBox("Don't ask again")
+            dialog.setCheckBox(dont_ask)
+
+            remove_btn = dialog.addButton("Remove", QMessageBox.ButtonRole.DestructiveRole)
+            cancel_btn = dialog.addButton(QMessageBox.StandardButton.Cancel)
+            dialog.setDefaultButton(cancel_btn)
+            dialog.exec()
+
+            if dialog.clickedButton() is not remove_btn:
+                return
+
+            if dont_ask.isChecked():
+                self.settings.confirm_recent_project_removal = False
+                self.settings.save()
+
+        self.settings.remove_recent(project_path)
+        self.refresh()
 
     def choose_project(self):
         folder = QFileDialog.getExistingDirectory(self, "Open project folder", str(Path.home()))

@@ -47,6 +47,26 @@ def folder_icon(size: int = 18) -> QIcon:
     return QIcon(pixmap)
 
 
+
+def trash_icon(size: int = 18) -> QIcon:
+    """Minimal red outline trash icon used for non-destructive recent-project removal."""
+    pixmap, painter = _canvas(size, "#ff6b74")
+    painter.drawLine(5.0, 5.8, 13.0, 5.8)
+    painter.drawLine(7.1, 4.0, 10.9, 4.0)
+    painter.drawLine(7.9, 3.1, 10.1, 3.1)
+    body = QPainterPath()
+    body.moveTo(6.0, 7.2)
+    body.lineTo(6.7, 14.2)
+    body.quadTo(6.8, 15.0, 7.7, 15.0)
+    body.lineTo(10.3, 15.0)
+    body.quadTo(11.2, 15.0, 11.3, 14.2)
+    body.lineTo(12.0, 7.2)
+    painter.drawPath(body)
+    painter.drawLine(8.2, 8.4, 8.4, 13.4)
+    painter.drawLine(9.8, 8.4, 9.6, 13.4)
+    painter.end()
+    return QIcon(pixmap)
+
 def pencil_icon(size: int = 18) -> QIcon:
     pixmap, painter = _canvas(size)
     painter.drawLine(4.0, 13.6, 5.0, 10.4)

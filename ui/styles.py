@@ -194,6 +194,24 @@ QToolButton#IconButton:disabled, QToolButton#WireIconButton:disabled {
     border-color: #292e3b;
     background: transparent;
 }
+QToolButton#DangerIconButton {
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    padding: 0;
+    background: #151821;
+    border: 1px solid #3b3038;
+    border-radius: 9px;
+}
+QToolButton#DangerIconButton:hover {
+    background: rgba(255, 92, 102, 0.09);
+    border-color: #8d4850;
+}
+QToolButton#DangerIconButton:pressed {
+    background: rgba(255, 92, 102, 0.16);
+    border-color: #b2525c;
+}
 QToolButton#TreeMenuButton {
     min-width: 32px;
     min-height: 32px;

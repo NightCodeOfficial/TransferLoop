@@ -69,6 +69,7 @@ class AppSettings:
     delete_import_zip_after_apply: bool = True
     monitor_downloads: bool = True
     recent_projects: list[str] = field(default_factory=list)
+    confirm_recent_project_removal: bool = True
     theme: str = "dark"
 
     @classmethod
@@ -80,6 +81,7 @@ class AppSettings:
             delete_import_zip_after_apply=bool(data.get("delete_import_zip_after_apply", True)),
             monitor_downloads=bool(data.get("monitor_downloads", True)),
             recent_projects=list(data.get("recent_projects", [])),
+            confirm_recent_project_removal=bool(data.get("confirm_recent_project_removal", True)),
             theme=data.get("theme", "dark"),
         )
 
@@ -91,6 +93,15 @@ class AppSettings:
         self.recent_projects = [p for p in self.recent_projects if p != normalized]
         self.recent_projects.insert(0, normalized)
         self.recent_projects = self.recent_projects[:12]
+        self.save()
+
+    def remove_recent(self, project_path: str) -> None:
+        """Remove a project from the start-screen recent list without deleting project data."""
+        normalized = str(Path(project_path).resolve())
+        self.recent_projects = [
+            path for path in self.recent_projects
+            if str(Path(path).resolve()) != normalized
+        ]
         self.save()
 
 
