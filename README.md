@@ -193,10 +193,6 @@ A missing file in a response ZIP is not treated as deleted. Deletions must be li
 
 
 
-## Project status
-
-TransferLoop is under active development.
-
 ## Contributing
 
 Bug reports, feature requests, and pull requests are welcome.
