@@ -5,8 +5,9 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QToolButton, QVBoxLayout, QWidget, QCheckBox
+    QAbstractItemView, QApplication, QCheckBox, QFileDialog, QFrame, QHBoxLayout,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.storage import AppSettings
@@ -21,11 +22,12 @@ class RecentProjectCard(QFrame):
         super().__init__(parent)
         self.project_path = project_path
         path = Path(project_path)
+        self.available = path.exists() and path.is_dir()
 
         self.setObjectName("RecentProjectCard")
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.PointingHandCursor if self.available else Qt.ArrowCursor)
         self.setMinimumHeight(84)
-        self.setToolTip("Open project")
+        self.setToolTip("Open project" if self.available else "Project folder is currently unavailable")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(17, 13, 13, 13)
@@ -35,10 +37,16 @@ class RecentProjectCard(QFrame):
         name_row.setContentsMargins(0, 0, 0, 0)
         name_row.setSpacing(8)
 
-        name = QLabel(path.name)
+        name = QLabel(path.name or str(path))
         name.setObjectName("RecentProjectName")
         name.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         name_row.addWidget(name, 1)
+
+        if not self.available:
+            unavailable = QLabel("Unavailable")
+            unavailable.setObjectName("Warn")
+            unavailable.setToolTip("The saved project path does not currently exist. The recent entry was kept so it is not lost because of a disconnected drive or temporary sync issue.")
+            name_row.addWidget(unavailable)
 
         layout.addLayout(name_row)
 
@@ -64,7 +72,8 @@ class RecentProjectCard(QFrame):
         folder_btn.setObjectName("WireIconButton")
         folder_btn.setIcon(folder_icon())
         folder_btn.setIconSize(QSize(18, 18))
-        folder_btn.setToolTip("Open project folder")
+        folder_btn.setToolTip("Open project folder" if self.available else "Project folder is unavailable")
+        folder_btn.setEnabled(self.available)
         folder_btn.clicked.connect(self.open_folder)
         path_row.addWidget(folder_btn)
 
@@ -82,10 +91,11 @@ class RecentProjectCard(QFrame):
         QApplication.clipboard().setText(self.project_path)
 
     def open_folder(self):
-        QDesktopServices.openUrl(QUrl.fromLocalFile(self.project_path))
+        if self.available:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.project_path))
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.LeftButton and self.available:
             self.open_requested.emit(self.project_path)
             event.accept()
             return
@@ -116,9 +126,19 @@ class HomePage(QWidget):
         open_btn.clicked.connect(self.choose_project)
         root.addWidget(open_btn)
 
+        recent_row = QHBoxLayout()
         recent_label = QLabel("Recent projects")
         recent_label.setObjectName("SectionTitle")
-        root.addWidget(recent_label)
+        self.project_search = QLineEdit()
+        self.project_search.setObjectName("TreeSearch")
+        self.project_search.setPlaceholderText("Search projects…")
+        self.project_search.setClearButtonEnabled(True)
+        self.project_search.setMaximumWidth(360)
+        self.project_search.textChanged.connect(self.filter_projects)
+        recent_row.addWidget(recent_label)
+        recent_row.addStretch(1)
+        recent_row.addWidget(self.project_search)
+        root.addLayout(recent_row)
 
         self.recent = QListWidget()
         self.recent.setObjectName("RecentProjectList")
@@ -130,24 +150,26 @@ class HomePage(QWidget):
 
     def refresh(self):
         self.recent.clear()
-        valid = []
         for project in self.settings.recent_projects:
-            path = Path(project)
-            if not path.exists() or not path.is_dir():
-                continue
-            valid.append(project)
             item = QListWidgetItem()
             item.setSizeHint(QSize(0, 88))
+            item.setData(Qt.UserRole, project)
             self.recent.addItem(item)
 
             card = RecentProjectCard(project)
             card.open_requested.connect(self.project_requested.emit)
             card.remove_requested.connect(self.remove_recent_project)
             self.recent.setItemWidget(item, card)
+        self.filter_projects(self.project_search.text())
 
-        if valid != self.settings.recent_projects:
-            self.settings.recent_projects = valid
-            self.settings.save()
+    def filter_projects(self, text: str):
+        query = text.strip().casefold()
+        for index in range(self.recent.count()):
+            item = self.recent.item(index)
+            path_text = str(item.data(Qt.UserRole) or "")
+            path = Path(path_text)
+            haystack = f"{path.name}\n{path_text}".casefold()
+            item.setHidden(bool(query) and query not in haystack)
 
     def remove_recent_project(self, project_path: str):
         if self.settings.confirm_recent_project_removal:

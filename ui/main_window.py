@@ -7,6 +7,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QStackedWidget
 
 from core.storage import AppSettings
+from core.version import APP_VERSION
 from .home_page import HomePage
 from .project_page import ProjectPage
 from .review_page import ReviewPage
@@ -16,7 +17,7 @@ from .settings_dialog import SettingsDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("TransferLoop")
+        self.setWindowTitle(f"TransferLoop {APP_VERSION}")
         self.resize(1280, 800)
         self.setMinimumSize(980, 650)
 

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import secrets
+import shutil
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
 from .ignore import is_ignored, load_patterns
-from .storage import load_json, save_json, project_state_path, copy_into_snapshot
+from .storage import (
+    copy_into_snapshot, export_baselines_dir, load_json, project_state_path, save_json,
+)
 from .instructions import ensure_project_instructions
 
 TEXT_EXTENSIONS = {
@@ -67,11 +72,37 @@ class ProjectState:
     last_backup: str = ""
     seen_zip_signatures: list[str] = field(default_factory=list)
     diverged_paths: list[str] = field(default_factory=list)
+    export_counter: int = 0
+    last_export_id: str = ""
+    pending_response_zip: str = ""
+    recovery_warning: str = field(default="", repr=False, compare=False)
 
     @classmethod
     def load(cls, project_path: Path) -> "ProjectState":
         state_path = project_state_path(project_path)
-        data = load_json(state_path, {})
+        recovery_warning = ""
+        if state_path.exists():
+            try:
+                data = json.loads(state_path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("state root is not a JSON object")
+            except Exception as exc:
+                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                recovery_copy = state_path.with_name(f"state.corrupt_{stamp}.json")
+                try:
+                    shutil.copy2(state_path, recovery_copy)
+                    recovery_warning = (
+                        f"TransferLoop could not read this project's saved state ({exc}). "
+                        f"The unreadable file was preserved as {recovery_copy.name}, and a fresh state was loaded."
+                    )
+                except OSError:
+                    recovery_warning = (
+                        f"TransferLoop could not read this project's saved state ({exc}). "
+                        "A fresh state was loaded; the corrupt file could not be copied."
+                    )
+                data = {}
+        else:
+            data = {}
         return cls(
             path=str(project_path.resolve()),
             name=data.get("name", project_path.name),
@@ -83,16 +114,28 @@ class ProjectState:
             last_backup=data.get("last_backup", ""),
             seen_zip_signatures=list(data.get("seen_zip_signatures", []))[-100:],
             diverged_paths=list(data.get("diverged_paths", [])),
+            export_counter=int(data.get("export_counter", 0) or 0),
+            last_export_id=data.get("last_export_id", ""),
+            pending_response_zip=data.get("pending_response_zip", ""),
+            recovery_warning=recovery_warning,
         )
 
     def save(self) -> None:
-        save_json(project_state_path(Path(self.path)), self.__dict__)
+        payload = {key: value for key, value in self.__dict__.items() if key != "recovery_warning"}
+        save_json(project_state_path(Path(self.path)), payload)
 
     def ensure_session(self) -> str:
         if not self.session_id:
             self.session_id = "TL-" + secrets.token_hex(3).upper()
             self.save()
         return self.session_id
+
+    def next_export_id(self) -> str:
+        session = self.ensure_session()
+        self.export_counter += 1
+        self.last_export_id = f"{session}-E{self.export_counter:04d}"
+        self.save()
+        return self.last_export_id
 
 
 class ProjectModel:
@@ -247,6 +290,39 @@ class ProjectModel:
 
         self._hash_cache = next_cache
         return hashes
+
+
+    def record_export_baseline(self, export_id: str) -> None:
+        """Persist the exact synchronization baseline associated with an export."""
+        if not export_id:
+            return
+        payload = {
+            "export_id": export_id,
+            "session_id": self.state.session_id,
+            "synced_hashes": dict(self.state.synced_hashes),
+        }
+        folder = export_baselines_dir(self.root)
+        save_json(folder / f"{export_id}.json", payload)
+
+        # Keep a bounded lineage history. The response workflow only needs recent
+        # exports, while older accepted responses remain in the normal history store.
+        baseline_files = sorted(
+            folder.glob("*.json"),
+            key=lambda path: path.stat().st_mtime_ns if path.exists() else 0,
+            reverse=True,
+        )
+        for stale in baseline_files[30:]:
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+
+    def baseline_hashes_for_export(self, export_id: str) -> dict[str, str] | None:
+        if not export_id:
+            return None
+        data = load_json(export_baselines_dir(self.root) / f"{export_id}.json", {})
+        hashes = data.get("synced_hashes") if isinstance(data, dict) else None
+        return dict(hashes) if isinstance(hashes, dict) else None
 
     def changed_since_sync(self) -> list[str]:
         # Persistently discard paths that became ignored after an earlier sync.

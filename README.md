@@ -1,5 +1,7 @@
 # TransferLoop
 
+**Version 0.1.0**
+
 **Keep your local project in the loop with browser-based AI.**
 
 TransferLoop is a privacy-focused, local-first desktop tool for linking projects on your machine with browser-based AI chats allowing you to  use an agent-like workflow while keeping your system and files your own.
@@ -17,7 +19,7 @@ TransferLoop keeps the AI interation "manual" by making the local side of the wo
 - **Choose what gets sent.** File selection and `.aiignore` control which project files can be included in an export.
 - **Use the browser AI you already prefer.** TransferLoop is not tied to one provider or API and does not require an AI API key.
 - **Send less on later rounds.** After the first export, **Export Changed** can send only files that changed locally. This way you don't need to export the entire project context again for your local changes.
-- **Start new chats with project history.** `.aimemory` gives a new conversation the project overview and a record of accepted changes.
+- **Start new chats with durable project context.** `.aimemory` keeps concise project direction, decisions, constraints, open work, notes, and recent accepted changes without storing a chat transcript.
 - **Review AI changes before applying them.** Returned files are staged so you can inspect diffs, conflicts, additions, and deletions before merging.
 
 ## How it works
@@ -32,9 +34,9 @@ TransferLoop keeps the AI interation "manual" by making the local side of the wo
 5. Work with the AI normally until you want it to make project changes.
 6. Download the returned ZIP into the watched response folder, or use **Import ZIP**.
     - The folder the tool watches for incoming zip files can be set using Edit > Preferences
-7. TransferLoop detects the ZIP, stages the response, and shows the file changes.
-8. Review the changes and accept or reject the files you want.
-9. Apply the accepted changes. TransferLoop creates a backup before writing to the project.
+7. TransferLoop detects the ZIP, validates its manifest/session/path safety, stages the response, and shows the file changes. Pending responses are remembered across app restarts while the original ZIP still exists.
+8. Review the changes and accept, reject, or leave files pending. **Accept All Safe** skips conflicted files.
+9. Apply the accepted changes. TransferLoop creates a backup and applies the response transactionally; a mid-apply failure automatically rolls project files back.
 10. If you make local changes afterward, use **Export Changed** or **Export Selected** to send only the files the AI needs instead of exporting the whole project again.
 
 ## Installation
@@ -84,10 +86,13 @@ TransferLoop does not connect a browser AI directly to your machine.
 
 It can include:
 
-- what the project does
-- project structure or technical notes
-- project-specific context
-- a limited history of AI changes that were accepted
+- what the project does and its technical snapshot
+- current direction
+- architecture and important decisions
+- constraints and conventions
+- open work
+- durable project notes
+- a short recent history of AI changes that were accepted
 
 TransferLoop handles it as follows:
 
@@ -95,6 +100,8 @@ TransferLoop handles it as follows:
 - source files remain the source of truth
 - if `.aimemory` disagrees with the project files, the project files win
 - TransferLoop protects the accepted-change history from being replaced by an older AI-generated copy
+- detailed audit history remains in TransferLoop's internal history store instead of growing `.aimemory` indefinitely
+- AI responses can optionally propose durable `memory_updates`; the review screen keeps these separate and unchecked until the user chooses to retain them
 
 ## .aiignore
 
@@ -112,6 +119,10 @@ build/
 runtime/
 .env
 ```
+
+## Project picker
+
+The start screen keeps recent projects searchable by project name or path. A recent project whose folder is temporarily unavailable is retained and marked **Unavailable** instead of being silently removed, which is useful for disconnected drives, network locations, or temporarily unavailable synchronized folders.
 
 ## Built-in editor
 
@@ -169,6 +180,7 @@ Example `.ai-response.json`:
 {
   "format_version": 1,
   "session_id": "TL-ABC123",
+  "export_id": "TL-ABC123-E0007",
   "summary": "Added persistent output-directory behavior.",
   "files": [
     {
@@ -184,9 +196,9 @@ Example `.ai-response.json`:
 }
 ```
 
-TransferLoop checks the ZIP contents against the local project instead of relying only on the manifest.
+TransferLoop checks the ZIP contents against the local project instead of relying only on the manifest. It rejects unsafe manifest paths, wrong-session responses, duplicate/case-colliding manifest paths, and unsupported manifest versions. When `export_id` is present, conflicts are checked against the exact retained baseline for that export.
 
-A missing file in a response ZIP is not treated as deleted. Deletions must be listed with `"action": "deleted"`.
+A missing file in a response ZIP is not treated as deleted. Deletions must be listed with `"action": "deleted"`. Changed exports also tell the AI when a previously synchronized local file was deleted, even though that deleted file cannot be present in the ZIP.
 
 
 

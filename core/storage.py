@@ -138,6 +138,12 @@ def history_dir(project_path: Path) -> Path:
     return path
 
 
+def export_baselines_dir(project_path: Path) -> Path:
+    path = project_store_dir(project_path) / "export_baselines"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def create_backup_folder(project_path: Path) -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     folder = backups_dir(project_path) / stamp

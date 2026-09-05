@@ -78,7 +78,8 @@ QLabel#SessionValue {
     background: rgba(111, 93, 247, 0.08);
     border: 1px solid rgba(126, 109, 255, 0.20);
     border-radius: 8px;
-    padding: 4px 8px;
+    padding: 5px 9px;
+    min-height: 18px;
     font-size: 9.2pt;
     font-weight: 650;
 }
@@ -91,7 +92,8 @@ QLabel#Good {
     background: rgba(62, 171, 104, 0.12);
     border: 1px solid rgba(90, 207, 134, 0.32);
     border-radius: 10px;
-    padding: 5px 9px;
+    padding: 6px 10px;
+    min-height: 18px;
     font-weight: 650;
 }
 QLabel#Warn {
@@ -99,8 +101,37 @@ QLabel#Warn {
     background: rgba(205, 153, 56, 0.10);
     border: 1px solid rgba(229, 180, 76, 0.30);
     border-radius: 10px;
-    padding: 5px 9px;
+    padding: 6px 10px;
+    min-height: 18px;
     font-weight: 650;
+}
+QLabel#AcceptedState {
+    color: #79dda0;
+    font-weight: 700;
+}
+QLabel#NeedsContextState {
+    color: #ff9292;
+    font-weight: 700;
+}
+QLabel#WorkflowBadgeActive {
+    color: #d9d4ff;
+    background: rgba(111, 93, 247, 0.10);
+    border: 1px solid rgba(126, 109, 255, 0.26);
+    border-radius: 10px;
+    padding: 4px 10px;
+    min-height: 16px;
+    font-size: 9.0pt;
+    font-weight: 650;
+}
+QLabel#WorkflowBadgeInactive {
+    color: #9aa2b5;
+    background: #141821;
+    border: 1px solid #2b3040;
+    border-radius: 10px;
+    padding: 4px 10px;
+    min-height: 16px;
+    font-size: 9.0pt;
+    font-weight: 600;
 }
 QLabel#Watching {
     color: #a9a1ff;
@@ -111,6 +142,7 @@ QPushButton {
     border: 1px solid #313747;
     border-radius: 9px;
     padding: 8px 13px;
+    min-height: 18px;
     color: #eef0f6;
 }
 QPushButton:hover {
@@ -140,10 +172,26 @@ QPushButton#Primary:hover {
     background: #7d6cff;
     border-color: #9488ff;
 }
+QPushButton#ApplyPrimary {
+    background: #6f5df7;
+    border-color: #7e6dff;
+    color: white;
+    font-weight: 650;
+}
+QPushButton#ApplyPrimary:hover {
+    background: #7d6cff;
+    border-color: #9488ff;
+}
+QPushButton#ApplyPrimary:disabled {
+    color: #646a78;
+    background: #171a22;
+    border-color: #292e3b;
+}
 QPushButton#Secondary {
     background: transparent;
     border: 1px solid #4d466c;
     color: #d8d4ff;
+    font-weight: 600;
 }
 QPushButton#Secondary:hover {
     background: rgba(111, 93, 247, 0.10);

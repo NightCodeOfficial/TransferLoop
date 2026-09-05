@@ -11,7 +11,7 @@ from PySide6.QtCore import QMimeData, QSize, QTimer, Qt, Signal, QUrl
 from PySide6.QtGui import QAction, QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton,
-    QLineEdit, QScrollArea, QSplitter, QStackedWidget, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+    QLineEdit, QScrollArea, QSizePolicy, QSplitter, QStackedWidget, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 )
 
 from core.exporter import export_package
@@ -20,7 +20,7 @@ from core.instructions import (
 )
 from core.memory import MEMORY_FILENAME, ensure_memory
 from core.ignore import DEFAULT_AIIGNORE, add_pattern, is_ignored, load_patterns
-from core.importer import ImportInspection, inspect_zip, undo_last_apply, zip_signature
+from core.importer import ImportInspection, inspect_zip, inspect_zip_detailed, undo_last_apply, zip_signature
 from core.project import ProjectDiskSnapshot, ProjectModel, likely_text_file
 from core.storage import AppSettings
 from .editor_workspace import EditorWorkspace
@@ -46,7 +46,9 @@ class ProjectPage(QWidget):
         self.last_export: Path | None = None
         self.last_instructions: Path | None = None
         self.last_export_mode: str = ""
+        self.last_export_id: str = ""
         self.last_export_paths: tuple[str, ...] = ()
+        self.last_deleted_paths: tuple[str, ...] = ()
         self.scanned_zip_signatures: set[str] = set()
         self._updating_checks = False
         self.editor_sidebar_preferred = True
@@ -65,23 +67,59 @@ class ProjectPage(QWidget):
         back.clicked.connect(self.request_back)
         self.title = QLabel("Project")
         self.title.setObjectName("Title")
-        self.sync_label = QLabel("")
-        self.sync_label.setMinimumWidth(82)
-        self.sync_label.setAlignment(Qt.AlignCenter)
-        self.editor_return_btn = QPushButton("Editor")
-        self.editor_return_btn.setObjectName("Secondary")
-        self.editor_return_btn.setVisible(False)
-        self.editor_return_btn.clicked.connect(self.show_editor_mode)
-        settings_btn = QPushButton("Project Settings")
-        settings_btn.setObjectName("Secondary")
-        settings_btn.clicked.connect(self.open_settings)
         header.addWidget(back)
         header.addSpacing(4)
         header.addWidget(self.title)
         header.addStretch(1)
-        header.addWidget(self.sync_label)
-        header.addWidget(self.editor_return_btn)
-        header.addWidget(settings_btn)
+
+        self.sync_label = QLabel("")
+        self.sync_label.setAlignment(Qt.AlignCenter)
+        self.sync_label.setWordWrap(False)
+
+        self.editor_return_btn = QPushButton("Editor")
+        self.editor_return_btn.setObjectName("Secondary")
+        self.editor_return_btn.setVisible(False)
+        self.editor_return_btn.clicked.connect(self.show_editor_mode)
+
+        self.pending_badge = QPushButton("AI Response")
+        self.pending_badge.setObjectName("Secondary")
+        self.pending_badge.setVisible(False)
+        self.pending_badge.setToolTip("Open the pending AI response review")
+        self.pending_badge.clicked.connect(self.open_pending_review)
+
+        self.settings_btn = QPushButton("Project Settings")
+        self.settings_btn.setObjectName("Secondary")
+        self.settings_btn.clicked.connect(self.open_settings)
+
+        header_right = QVBoxLayout()
+        header_right.setContentsMargins(0, 0, 0, 0)
+        header_right.setSpacing(8)
+
+        controls_row = QHBoxLayout()
+        controls_row.setContentsMargins(0, 0, 0, 0)
+        controls_row.setSpacing(8)
+        controls_row.addStretch(1)
+        controls_row.addWidget(self.sync_label)
+        controls_row.addWidget(self.pending_badge)
+        controls_row.addWidget(self.editor_return_btn)
+        controls_row.addWidget(self.settings_btn)
+        header_right.addLayout(controls_row)
+
+        workflow_row = QHBoxLayout()
+        workflow_row.setContentsMargins(0, 0, 0, 0)
+        workflow_row.setSpacing(8)
+        workflow_row.addStretch(1)
+        self.workflow_badges: dict[str, QLabel] = {}
+        for key, label in (("project", "Project"), ("export", "Export"), ("response", "Response"), ("applied", "Applied")):
+            badge = QLabel(label)
+            badge.setAlignment(Qt.AlignCenter)
+            badge.setObjectName("WorkflowBadgeInactive")
+            badge.setToolTip(f"Workflow status for {label.lower()}")
+            self.workflow_badges[key] = badge
+            workflow_row.addWidget(badge)
+        header_right.addLayout(workflow_row)
+
+        header.addLayout(header_right)
         root.addLayout(header)
 
         splitter = QSplitter(Qt.Horizontal)
@@ -435,6 +473,46 @@ class ProjectPage(QWidget):
         self.monitor_timer.timeout.connect(self.poll_project_changes)
         self.monitor_timer.start()
 
+        for widget in (
+            self.sync_label,
+            self.session_id,
+            self.pending_badge,
+            self.editor_return_btn,
+            self.settings_btn,
+            self.select_ready_files_btn,
+            self.review_btn,
+        ):
+            self._configure_compact_text_widget(widget)
+        for badge in self.workflow_badges.values():
+            self._configure_compact_text_widget(badge, extra_width=24)
+
+    def _configure_compact_text_widget(self, widget, extra_width: int = 30):
+        widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._update_compact_text_width(widget, extra_width)
+
+    def _update_compact_text_width(self, widget, extra_width: int = 30):
+        text_getter = getattr(widget, "text", None)
+        text = text_getter() if callable(text_getter) else ""
+        width = widget.fontMetrics().horizontalAdvance(text or " ") + extra_width
+        icon_getter = getattr(widget, "icon", None)
+        if callable(icon_getter):
+            icon = icon_getter()
+            if hasattr(icon, "isNull") and not icon.isNull():
+                width += widget.iconSize().width() + 8
+        if width > 0:
+            widget.setMinimumWidth(width)
+
+    def _set_workflow_badge(self, key: str, active: bool):
+        badge = self.workflow_badges.get(key)
+        if not badge:
+            return
+        label = key.capitalize()
+        badge.setText(f"{label} {'✓' if active else '○'}")
+        badge.setObjectName("WorkflowBadgeActive" if active else "WorkflowBadgeInactive")
+        badge.style().unpolish(badge)
+        badge.style().polish(badge)
+        self._update_compact_text_width(badge, 28)
+
     def load_project(self, project_path: str) -> bool:
         target = Path(project_path).resolve()
         switching_projects = bool(self.model and self.model.root != target)
@@ -448,6 +526,7 @@ class ProjectPage(QWidget):
             self.pending_import.cleanup()
         self.pending_import = None
         self.review_btn.setVisible(False)
+        self.pending_badge.setVisible(False)
 
         # Invalidate any background metadata scan that may still be finishing for
         # the previously open project.
@@ -456,12 +535,16 @@ class ProjectPage(QWidget):
         self._project_disk_snapshot = None
 
         self.model = ProjectModel(target)
+        if self.model.state.recovery_warning:
+            QMessageBox.warning(self, "Project state recovered", self.model.state.recovery_warning)
         self.editor_workspace.set_project_root(self.model.root)
         ensure_memory(self.model)
         self.last_export = None
         self.last_instructions = None
         self.last_export_mode = ""
+        self.last_export_id = ""
         self.last_export_paths = ()
+        self.last_deleted_paths = ()
         self.last_export_label.setText("No export created yet")
         self.last_export_meta.setText("Create an export to generate the project ZIP and companion AI instructions.")
         self.instructions_label.setText("AI instructions will be generated beside the ZIP")
@@ -474,6 +557,7 @@ class ProjectPage(QWidget):
         self.settings.touch_recent(project_path)
         self.refresh_tree()
         self.reset_zip_baseline()
+        self.restore_persisted_pending_response()
         self.refresh_status()
         self.reset_project_disk_snapshot()
         return True
@@ -607,6 +691,7 @@ class ProjectPage(QWidget):
         self._updating_checks = True
         self.tree.clear()
         patterns = load_patterns(self.model.root)
+        changed_paths = set(self.model.changed_since_sync()) if self.model.state.initialized else set()
 
         root_item = QTreeWidgetItem([self.model.root.name])
         root_item.setData(0, ROLE_REL, "")
@@ -630,7 +715,9 @@ class ProjectPage(QWidget):
                 except OSError:
                     continue
                 ignored = is_ignored(rel, patterns, is_dir)
-                item = QTreeWidgetItem([path.name])
+                changed_here = (not is_dir and rel in changed_paths)
+                display_name = f"{path.name}  • changed" if changed_here else path.name
+                item = QTreeWidgetItem([display_name])
                 item.setData(0, ROLE_REL, rel)
                 item.setData(0, ROLE_IS_DIR, is_dir)
                 item.setData(0, ROLE_IGNORED, ignored)
@@ -638,6 +725,9 @@ class ProjectPage(QWidget):
                     item.setForeground(0, QColor("#6f7585"))
                     item.setToolTip(0, "Excluded by .aiignore")
                 else:
+                    if changed_here:
+                        item.setForeground(0, QColor("#c0a7ff"))
+                        item.setToolTip(0, "Changed locally since the last TransferLoop export.")
                     if rel == MEMORY_FILENAME:
                         item.setForeground(0, QColor("#aaa2ff"))
                         item.setToolTip(0, "AI Project Memory — maintained automatically by TransferLoop and included in full/new-session exports.")
@@ -862,10 +952,15 @@ class ProjectPage(QWidget):
         self.last_export = artifacts.zip_path
         self.last_instructions = artifacts.instructions_path
         self.last_export_mode = artifacts.mode
+        self.last_export_id = artifacts.export_id
         self.last_export_paths = artifacts.exported_paths
+        self.last_deleted_paths = artifacts.deleted_paths
         self.last_export_label.setText(artifacts.zip_path.name)
         self.last_export_label.setToolTip(str(artifacts.zip_path))
-        self.last_export_meta.setText(f"Created just now  •  {self.human_size(artifacts.zip_path.stat().st_size)}")
+        deletion_note = f"  •  {len(artifacts.deleted_paths)} deletion{'s' if len(artifacts.deleted_paths) != 1 else ''} recorded" if artifacts.deleted_paths else ""
+        self.last_export_meta.setText(
+            f"{artifacts.export_id}  •  Created just now  •  {self.human_size(artifacts.zip_path.stat().st_size)}{deletion_note}"
+        )
         self.instructions_label.setText(artifacts.instructions_path.name)
         self.instructions_label.setToolTip(str(artifacts.instructions_path))
         self.instructions_meta.setText("Generated just now  •  Read first, then inspect the project ZIP")
@@ -1059,7 +1154,12 @@ public static class TransferLoopWin32 {{
         save_project_instructions(self.model.root, dialog.markdown())
         if self.last_export and self.last_export.exists() and self.last_export_mode:
             self.last_instructions = write_exported_instructions(
-                self.model, self.last_export, self.last_export_mode, self.last_export_paths
+                self.model,
+                self.last_export,
+                self.last_export_mode,
+                self.last_export_paths,
+                deleted_paths=self.last_deleted_paths,
+                export_id=self.last_export_id,
             )
             self.instructions_label.setText(self.last_instructions.name)
             self.instructions_label.setToolTip(str(self.last_instructions))
@@ -1156,6 +1256,29 @@ public static class TransferLoopWin32 {{
         # actual change, and ProjectModel reuses hashes for unchanged files.
         self.refresh_status()
 
+    def restore_persisted_pending_response(self):
+        if not self.model or not self.model.state.pending_response_zip:
+            return
+        zip_path = Path(self.model.state.pending_response_zip)
+        if not zip_path.exists():
+            self.model.state.pending_response_zip = ""
+            self.model.state.save()
+            return
+        inspection, error = inspect_zip_detailed(self.model, zip_path)
+        if not inspection:
+            self.model.state.pending_response_zip = ""
+            self.model.state.save()
+            return
+        self.pending_import = inspection
+        self.import_watch.setText("✓ Pending response restored")
+        self.import_status.setText(
+            f"{zip_path.name}\n{len(inspection.changes)} change(s) ready to review"
+        )
+        self.review_btn.setVisible(True)
+        self.pending_badge.setText(f"AI Response · {len(inspection.changes)}")
+        self._update_compact_text_width(self.pending_badge, 38)
+        self.pending_badge.setVisible(True)
+
     def reset_zip_baseline(self):
         self.scanned_zip_signatures.clear()
         folder = Path(self.settings.download_folder)
@@ -1185,9 +1308,13 @@ public static class TransferLoopWin32 {{
             self.scanned_zip_signatures.add(sig)
             if inspection:
                 self.pending_import = inspection
+                self.model.state.pending_response_zip = str(zip_path.resolve())
+                self.model.state.save()
                 self.import_watch.setText("✓ New response detected")
                 self.import_status.setText(f"{zip_path.name}\n{len(inspection.changes)} change(s) ready to review")
                 self.review_btn.setVisible(True)
+                self.pending_badge.setText(f"AI Response · {len(inspection.changes)}")
+                self.pending_badge.setVisible(True)
                 break
 
     def manual_import(self):
@@ -1216,20 +1343,25 @@ public static class TransferLoopWin32 {{
                 )
                 if answer != QMessageBox.Yes:
                     return
-        inspection = inspect_zip(self.model, zip_path)
+        inspection, import_error = inspect_zip_detailed(self.model, zip_path)
         if not inspection:
             QMessageBox.warning(
                 self,
-                "Could not map ZIP to project",
-                "The ZIP could not be confidently mapped to this project's files.\n\nFor best results, ask the AI to include .ai-response.json and preserve project-relative file paths.",
+                "Could not import AI response",
+                import_error or "The ZIP could not be confidently mapped to this project.",
             )
             return
         if self.pending_import:
             self.pending_import.cleanup()
         self.pending_import = inspection
+        self.model.state.pending_response_zip = str(zip_path.resolve())
+        self.model.state.save()
         self.import_watch.setText("✓ Response imported")
         self.import_status.setText(f"{Path(path).name}\n{len(inspection.changes)} change(s) ready to review")
         self.review_btn.setVisible(True)
+        self.pending_badge.setText(f"AI Response · {len(inspection.changes)}")
+        self._update_compact_text_width(self.pending_badge, 38)
+        self.pending_badge.setVisible(True)
 
     def open_pending_review(self):
         if self.model and self.pending_import:
@@ -1253,6 +1385,7 @@ public static class TransferLoopWin32 {{
             inspection = self.pending_import
             self.pending_import = None
             self.review_btn.setVisible(False)
+            self.pending_badge.setVisible(False)
             self.review_requested.emit(self.model, inspection)
 
     def restore_pending_review(self, inspection: ImportInspection | None):
@@ -1265,11 +1398,16 @@ public static class TransferLoopWin32 {{
         if self.pending_import and self.pending_import is not inspection:
             self.pending_import.cleanup()
         self.pending_import = inspection
+        self.model.state.pending_response_zip = str(Path(inspection.zip_path).resolve())
+        self.model.state.save()
         self.import_watch.setText("✓ Response ready to review")
         self.import_status.setText(
             f"{Path(inspection.zip_path).name}\n{len(inspection.changes)} change(s) ready to review"
         )
         self.review_btn.setVisible(True)
+        self.pending_badge.setText(f"AI Response · {len(inspection.changes)}")
+        self._update_compact_text_width(self.pending_badge, 38)
+        self.pending_badge.setVisible(True)
 
     def refresh_status(self, message: str = ""):
         if not self.model:
@@ -1288,7 +1426,7 @@ public static class TransferLoopWin32 {{
                 self.sync_label.setText(f"▲ Behind · {len(changed)} local change(s)")
                 self.sync_label.setObjectName("Warn")
             else:
-                self.sync_label.setText("● Synced")
+                self.sync_label.setText("● Up to date")
                 self.sync_label.setObjectName("Good")
         self.sync_label.style().unpolish(self.sync_label)
         self.sync_label.style().polish(self.sync_label)
@@ -1298,7 +1436,20 @@ public static class TransferLoopWin32 {{
         if message:
             self.session_hint.setText(message)
         else:
-            self.session_hint.setText("This conversation has the latest project state that was exported from TransferLoop.")
+            if state.last_export_id:
+                self.session_hint.setText(f"Latest local export: {state.last_export_id}. TransferLoop can verify responses against that exact baseline.")
+            else:
+                self.session_hint.setText("Create an export to establish the project state supplied to the AI conversation.")
+        exported = bool(state.last_export_id)
+        response = bool(self.pending_import)
+        backup = bool(state.last_backup)
+        self._set_workflow_badge("project", True)
+        self._set_workflow_badge("export", exported)
+        self._set_workflow_badge("response", response)
+        self._set_workflow_badge("applied", backup)
+        self._update_compact_text_width(self.sync_label, 36)
+        self._update_compact_text_width(self.session_id, 24)
+        self._update_compact_text_width(self.pending_badge, 38)
         self.update_export_info()
         if not self.pending_import:
             if self.settings.monitor_downloads:

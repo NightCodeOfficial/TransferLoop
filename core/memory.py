@@ -12,8 +12,15 @@ if TYPE_CHECKING:
 MEMORY_FILENAME = ".aimemory"
 ENTRY_MARKER = "<!-- TL:MEMORY-ENTRY -->"
 MEMORY_ENTRY_RE = re.compile(r"<!-- (?:TL|APS):MEMORY-ENTRY -->")
-MAX_DETAILED_ENTRIES = 40
+MAX_DETAILED_ENTRIES = 12
 HISTORY_HEADING = "## Accepted Change History"
+STRUCTURED_MEMORY_SECTIONS = {
+    "current_direction": ("## Current Direction", "- No durable direction has been recorded yet."),
+    "decisions": ("## Architecture & Important Decisions", "- No durable decisions have been recorded yet."),
+    "constraints": ("## Constraints & Conventions", "- No durable constraints have been recorded yet."),
+    "open_work": ("## Open Work", "- No open work has been recorded yet."),
+    "project_notes": ("## Project Notes", "- No additional durable project notes have been recorded yet."),
+}
 
 
 def memory_path(project_root: Path) -> Path:
@@ -84,10 +91,94 @@ def _detect_technical_snapshot(model: "ProjectModel") -> list[str]:
     return lines or ["- Technical details will be inferred from the current project files."]
 
 
+def _section_bounds(text: str, heading: str) -> tuple[int, int] | None:
+    start = text.find(heading)
+    if start == -1:
+        return None
+    search_from = start + len(heading)
+    next_heading = re.search(r"^## ", text[search_from:], flags=re.MULTILINE)
+    end = search_from + next_heading.start() if next_heading else len(text)
+    return start, end
+
+
+def _ensure_structured_sections(path: Path) -> None:
+    """Add durable project-memory sections to older .aimemory files in place."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+
+    if all(heading in text for heading, _placeholder in STRUCTURED_MEMORY_SECTIONS.values()):
+        return
+
+    insert_at = text.find("## Important Memory Rules")
+    if insert_at == -1:
+        insert_at = text.find(HISTORY_HEADING)
+    if insert_at == -1:
+        insert_at = len(text)
+
+    missing = []
+    for heading, placeholder in STRUCTURED_MEMORY_SECTIONS.values():
+        if heading not in text:
+            missing.append(f"{heading}\n\n{placeholder}\n")
+    if not missing:
+        return
+
+    prefix = text[:insert_at].rstrip()
+    suffix = text[insert_at:].lstrip()
+    updated = prefix + "\n\n" + "\n".join(missing).rstrip() + "\n\n" + suffix
+    path.write_text(updated.rstrip() + "\n", encoding="utf-8")
+
+
+def apply_memory_updates(model: "ProjectModel", updates: dict[str, list[str]]) -> Path:
+    """Merge user-approved durable AI memory suggestions into managed sections."""
+    path = ensure_memory(model)
+    text = path.read_text(encoding="utf-8", errors="replace")
+
+    for key, values in updates.items():
+        if key not in STRUCTURED_MEMORY_SECTIONS or not isinstance(values, list):
+            continue
+        clean_values = []
+        seen = set()
+        for value in values:
+            item = " ".join(str(value).strip().split())
+            if not item or item.casefold() in seen:
+                continue
+            seen.add(item.casefold())
+            clean_values.append(item[:600])
+        if not clean_values:
+            continue
+
+        heading, placeholder = STRUCTURED_MEMORY_SECTIONS[key]
+        bounds = _section_bounds(text, heading)
+        if not bounds:
+            continue
+        start, end = bounds
+        section = text[start:end]
+        existing = []
+        for line in section.splitlines()[1:]:
+            stripped = line.strip()
+            if stripped.startswith("- ") and stripped != placeholder:
+                existing.append(stripped[2:].strip())
+        merged = []
+        merged_seen = set()
+        for item in [*existing, *clean_values]:
+            if item.casefold() in merged_seen:
+                continue
+            merged_seen.add(item.casefold())
+            merged.append(item)
+        replacement = heading + "\n\n" + "\n".join(f"- {item}" for item in merged) + "\n\n"
+        text = text[:start] + replacement + text[end:].lstrip("\n")
+
+    path.write_text(text.rstrip() + "\n", encoding="utf-8")
+    return path
+
+
 def ensure_memory(model: "ProjectModel") -> Path:
     path = memory_path(model.root)
     if path.exists():
         _migrate_memory_branding(path)
+        _ensure_structured_sections(path)
         return path
 
     context = model.state.project_context.strip() or (
@@ -97,7 +188,7 @@ def ensure_memory(model: "ProjectModel") -> Path:
     snapshot = "\n".join(_detect_technical_snapshot(model))
     text = f"""# AI Project Memory
 
-> This file is maintained by TransferLoop. It gives a new AI conversation project context and a concise history of changes that were actually accepted into the local project.
+> This file is maintained by TransferLoop. It gives a new AI conversation durable project context plus a short recent history of changes actually accepted into the local project.
 
 ## Project Overview
 
@@ -108,6 +199,26 @@ def ensure_memory(model: "ProjectModel") -> Path:
 ## Technical Snapshot
 
 {snapshot}
+
+## Current Direction
+
+- No durable direction has been recorded yet.
+
+## Architecture & Important Decisions
+
+- No durable decisions have been recorded yet.
+
+## Constraints & Conventions
+
+- No durable constraints have been recorded yet.
+
+## Open Work
+
+- No open work has been recorded yet.
+
+## Project Notes
+
+- No additional durable project notes have been recorded yet.
 
 ## Important Memory Rules
 

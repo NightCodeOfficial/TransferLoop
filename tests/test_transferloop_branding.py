@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.instructions import _migrate_legacy_branding
+from core.instructions import _migrate_legacy_branding, _migrate_protocol_additions
 from core.memory import HISTORY_HEADING, _migrate_memory_branding
 from core.project import ProjectState
 from core.storage import _migrate_legacy_app_data
@@ -39,6 +39,18 @@ class TransferLoopBrandingTests(unittest.TestCase):
 
         self.assertIn("# TransferLoop Instructions", migrated)
         self.assertIn("Keep this custom sentence.", migrated)
+
+    def test_protocol_migration_adds_export_lineage_and_memory_updates(self) -> None:
+        source = (
+            '  "session_id": "SESSION_ID",\n'
+            '- `session_id` must match the TransferLoop session ID supplied below.\n'
+            '- Do not modify `.aimemory` as part of normal implementation work unless the user explicitly asks you to. TransferLoop maintains it after accepted imports.\n'
+            'TransferLoop independently verifies the ZIP contents and does not blindly trust the manifest. The notes are for explaining intent; the application determines what actually changed.\n'
+        )
+        migrated = _migrate_protocol_additions(source)
+        self.assertIn('"export_id": "EXPORT_ID"', migrated)
+        self.assertIn('memory_updates', migrated)
+        self.assertIn('Optional durable memory updates', migrated)
 
     def test_memory_branding_migration_preserves_accepted_history_verbatim(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
