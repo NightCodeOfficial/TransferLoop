@@ -277,19 +277,46 @@ class ReviewPage(QWidget):
         self.notes.setHtml("".join(notes))
         self.update_file_state_label(change)
 
+    def confirm_conflict_overwrite(self, paths: list[str], *, bulk: bool = False) -> bool:
+        """Ask whether conflicted AI changes should intentionally replace local files."""
+        if not paths:
+            return False
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("Some changes need updated context" if bulk else "Local file changed since export")
+
+        if bulk:
+            dialog.setText(
+                "TransferLoop accepted the non-conflicting changes, but some files were left pending because their local state differs from the AI's export context."
+            )
+            dialog.setInformativeText(
+                "If the local versions matter, keep these files pending and send their current versions to the AI first. "
+                "If you intentionally want the AI versions to replace the local files, choose Ignore Warning and Overwrite. "
+                "The apply operation is backed up and transactional.\n\n"
+                "Files left pending:\n" + "\n".join(f"• {path}" for path in paths)
+            )
+            keep_btn = dialog.addButton("Keep Pending", QMessageBox.ButtonRole.RejectRole)
+        else:
+            dialog.setText(f"{paths[0]} changed locally after the export used by the AI.")
+            dialog.setInformativeText(
+                "If the local changes matter, keep this file pending and give the AI the updated file first. "
+                "If you intentionally want the AI version to replace the local file, choose Ignore Warning and Overwrite. "
+                "The apply operation is backed up and transactional."
+            )
+            keep_btn = dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+
+        overwrite_btn = dialog.addButton("Ignore Warning and Overwrite", QMessageBox.ButtonRole.DestructiveRole)
+        dialog.setDefaultButton(keep_btn)
+        dialog.exec()
+        return dialog.clickedButton() is overwrite_btn
+
     def set_current_acceptance(self, accepted: bool):
         change = self.current_change()
         if not change:
             return
         if accepted and change.conflict:
-            answer = QMessageBox.warning(
-                self,
-                "Local file changed since export",
-                f"{change.path} changed locally after the export used by the AI.\n\nAccepting the AI version will overwrite the current local version. If those local changes matter, give the AI the updated file first. The apply operation is backed up and transactional.",
-                QMessageBox.Yes | QMessageBox.Cancel,
-                QMessageBox.Cancel,
-            )
-            if answer != QMessageBox.Yes:
+            if not self.confirm_conflict_overwrite([change.path]):
                 return
         change.accepted = accepted
         change.rejected = not accepted
@@ -298,25 +325,25 @@ class ReviewPage(QWidget):
         self.update_decision_summary()
 
     def accept_all_safe(self):
-        needs_context = []
+        needs_context: list[ChangeItem] = []
         for change in self.change_by_path.values():
             if change.conflict:
                 if not change.accepted and not change.rejected:
-                    needs_context.append(change.path)
+                    needs_context.append(change)
                 self.update_file_item(change)
                 continue
             change.accepted = True
             change.rejected = False
             self.update_file_item(change)
-        if needs_context:
-            file_list = "\n".join(f"• {path}" for path in needs_context)
-            QMessageBox.warning(
-                self,
-                "Some changes need updated context",
-                "TransferLoop accepted the non-conflicting changes, but the files below changed locally after the AI's export baseline and were left pending.\n\n"
-                "Give the AI the current versions of these files before asking it to update them, or review and accept a conflicted file manually if overwriting the local version is intentional.\n\n"
-                f"Files left pending:\n{file_list}",
-            )
+
+        if needs_context and self.confirm_conflict_overwrite(
+            [change.path for change in needs_context], bulk=True
+        ):
+            for change in needs_context:
+                change.accepted = True
+                change.rejected = False
+                self.update_file_item(change)
+
         self.update_decision_summary()
         self.show_current(self.files.currentItem(), None)
 

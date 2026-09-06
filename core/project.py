@@ -23,6 +23,13 @@ TEXT_EXTENSIONS = {
     ".rs", ".php", ".rb", ".swift", ".kt", ".kts", ".r", ".vue", ".svelte", ".gradle", ".properties",
 }
 
+# These files are useful TransferLoop metadata, but changes to them do not mean
+# the AI is missing project source context. .aimemory is app-maintained and
+# .aiignore only changes what future exports should include. Keep their stored
+# hashes intact so an AI response that tries to overwrite either file can still
+# be checked against the export/sync baseline.
+CONTEXT_NEUTRAL_SYNC_FILES = {".aimemory", ".aiignore"}
+
 
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -331,10 +338,19 @@ class ProjectModel:
         self.prune_ignored_sync_state()
         current = self.all_hashes()
         synced = self.state.synced_hashes
-        memory_file = ".aimemory"
-        changed = [rel for rel, digest in current.items() if rel != memory_file and synced.get(rel) != digest]
-        changed.extend(rel for rel in synced if rel != memory_file and rel not in current)
-        changed.extend(rel for rel in self.state.diverged_paths if rel != memory_file)
+
+        # TransferLoop metadata/configuration changes are not missing AI project
+        # context. In particular, adding a generated report to .aiignore should
+        # immediately remove that report from the AI-visible state without making
+        # the project appear "Behind" or forcing a context refresh solely because
+        # .aiignore itself changed.
+        neutral = CONTEXT_NEUTRAL_SYNC_FILES
+        changed = [
+            rel for rel, digest in current.items()
+            if rel not in neutral and synced.get(rel) != digest
+        ]
+        changed.extend(rel for rel in synced if rel not in neutral and rel not in current)
+        changed.extend(rel for rel in self.state.diverged_paths if rel not in neutral)
         return sorted(set(changed))
 
     def mark_synced(self, relative_paths: Iterable[str], initialize: bool = False) -> None:

@@ -53,7 +53,34 @@ class SyncIgnoreTrackingTests(unittest.TestCase):
 
         self.assertFalse(any(path.startswith("runtime/") for path in reopened.state.synced_hashes))
         self.assertFalse(any(path.startswith("runtime/") for path in reopened.state.diverged_paths))
-        self.assertEqual([".aiignore"], reopened.changed_since_sync())
+        self.assertEqual([], reopened.changed_since_sync())
+
+    def test_new_generated_report_then_ignore_does_not_require_context_refresh(self) -> None:
+        self.write(".aiignore", "")
+        self.write("app.py", "print('ok')\n")
+        model = ProjectModel(self.project)
+        model.mark_synced([".aiignore", "app.py"], initialize=True)
+
+        # A locally generated artifact briefly exists inside the project, then the
+        # user excludes it from future AI context. After the ignore rule is added,
+        # neither the artifact nor the .aiignore edit should make the project look
+        # out of sync with the AI's source context.
+        self.write("reports/validation.xlsx", "generated report")
+        self.assertIn("reports/validation.xlsx", model.changed_since_sync())
+
+        self.write(".aiignore", "reports/\n")
+        self.assertEqual([], model.changed_since_sync())
+
+    def test_real_source_edit_still_counts_when_aiignore_also_changes(self) -> None:
+        self.write(".aiignore", "")
+        self.write("app.py", "print('old')\n")
+        model = ProjectModel(self.project)
+        model.mark_synced([".aiignore", "app.py"], initialize=True)
+
+        self.write(".aiignore", "reports/\n")
+        self.write("app.py", "print('new')\n")
+
+        self.assertEqual(["app.py"], model.changed_since_sync())
 
     def test_ignored_diverged_paths_are_pruned_too(self) -> None:
         self.write(".aiignore", "runtime/\n")

@@ -1,6 +1,6 @@
 # TransferLoop
 
-**Version 0.1.6**
+**Version 0.1.9**
 
 **Keep your local project in the loop with browser-based AI.**
 
@@ -32,10 +32,10 @@ TransferLoop keeps the AI interation "manual" by making the local side of the wo
 4. Click "select in explorer" to highlight both files in explorer
 5. Upload both files to your browser-based AI.
 5. Work with the AI normally until you want it to make project changes.
-6. Download the returned ZIP into the watched response folder, or use **Import ZIP**.
+6. Download the returned ZIP into the watched response folder, or use **Import ZIP**. The copy button beside **Import ZIP** copies the configured response-folder path to the clipboard.
     - The folder the tool watches for incoming zip files can be set using Edit > Preferences
 7. TransferLoop detects the ZIP, validates its manifest/session/path safety, stages the response, and shows the file changes. Pending responses are remembered across app restarts while the original ZIP still exists.
-8. Review the changes and accept, reject, or leave files pending. **Accept Safe Changes** skips conflicted files.
+8. Review the changes and accept, reject, or leave files pending. **Accept Safe Changes** skips conflicted files by default. When conflicts are reported, the warning offers **Ignore Warning and Overwrite** if you intentionally want the AI versions to replace those local files; overwritten files are treated as synchronized after the accepted response is applied.
 9. Apply the accepted changes. TransferLoop creates a backup and applies the response transactionally; a mid-apply failure automatically rolls project files back.
 10. If you make local changes afterward, use **Export Changed** or **Export Selected** to send only the files the AI needs instead of exporting the whole project again.
 
@@ -196,7 +196,7 @@ Example `.ai-response.json`:
 }
 ```
 
-TransferLoop checks the ZIP contents against the local project instead of relying only on the manifest. It rejects unsafe manifest paths, wrong-session responses, duplicate/case-colliding manifest paths, and unsupported manifest versions. When `export_id` is present, conflicts are checked against the exact retained baseline for that export.
+TransferLoop checks the ZIP contents against the local project instead of relying only on the manifest. It rejects unsafe manifest paths, wrong-session responses, duplicate/case-colliding manifest paths, and unsupported manifest versions. When `export_id` is present, conflicts are checked against the exact retained baseline for that export. Conflict warnings are conservative by default, but the review dialog provides an explicit **Ignore Warning and Overwrite** action for intentional replacements; accepted overwritten paths become the new synchronized local state after apply.
 
 A missing file in a response ZIP is not treated as deleted. Deletions must be listed with `"action": "deleted"`. Changed exports also tell the AI when a previously synchronized local file was deleted, even though that deleted file cannot be present in the ZIP.
 

@@ -70,6 +70,31 @@ class ImportSafetyTests(unittest.TestCase):
         self.assertIsNone(inspection)
         self.assertIn("unsafe or invalid", error)
 
+    def test_aiignore_only_change_does_not_make_other_response_files_need_context(self) -> None:
+        response = self.make_response("aiignore_local.zip", self.manifest(), {"app.py": "ai\n"})
+        (self.project / ".aiignore").write_text("reports/\n", encoding="utf-8")
+
+        self.assertEqual([], self.model.changed_since_sync())
+        inspection, error = inspect_zip_detailed(self.model, response)
+
+        self.assertEqual("", error)
+        self.assertIsNotNone(inspection)
+        assert inspection is not None
+        self.assertFalse(inspection.changes[0].conflict)
+
+    def test_aiignore_itself_still_conflicts_if_ai_tries_to_overwrite_newer_rules(self) -> None:
+        manifest = self.manifest(".aiignore", "modified")
+        response = self.make_response("aiignore_response.zip", manifest, {".aiignore": "ai-rule/\n"})
+        (self.project / ".aiignore").write_text("local-rule/\n", encoding="utf-8")
+
+        self.assertEqual([], self.model.changed_since_sync())
+        inspection, error = inspect_zip_detailed(self.model, response)
+
+        self.assertEqual("", error)
+        self.assertIsNotNone(inspection)
+        assert inspection is not None
+        self.assertTrue(inspection.changes[0].conflict)
+
     def test_exact_export_baseline_detects_local_conflict(self) -> None:
         response = self.make_response("response.zip", self.manifest(), {"app.py": "ai\n"})
         (self.project / "app.py").write_text("local after export\n", encoding="utf-8")
@@ -152,6 +177,25 @@ class ImportSafetyTests(unittest.TestCase):
         self.assertIsNotNone(inspection)
         assert inspection is not None
         self.assertTrue(inspection.changes[0].conflict)
+
+
+    def test_intentional_conflict_overwrite_becomes_synced_after_apply(self) -> None:
+        response = self.make_response("override_conflict.zip", self.manifest(), {"app.py": "ai overwrite\n"})
+        (self.project / "app.py").write_text("local after export\n", encoding="utf-8")
+
+        inspection, error = inspect_zip_detailed(self.model, response)
+
+        self.assertEqual("", error)
+        self.assertIsNotNone(inspection)
+        assert inspection is not None
+        self.assertTrue(inspection.changes[0].conflict)
+        self.assertIn("app.py", self.model.changed_since_sync())
+
+        apply_changes(self.model, inspection, {"app.py"})
+
+        self.assertEqual("ai overwrite\n", (self.project / "app.py").read_text(encoding="utf-8"))
+        self.assertEqual([], self.model.changed_since_sync())
+        self.assertNotIn("app.py", self.model.state.diverged_paths)
 
     def test_apply_rolls_back_all_project_files_when_a_write_fails(self) -> None:
         (self.project / "other.py").write_text("other old\n", encoding="utf-8")

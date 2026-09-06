@@ -383,8 +383,18 @@ class ProjectPage(QWidget):
         import_zip_btn = QPushButton("Import ZIP…")
         import_zip_btn.setObjectName("Secondary")
         import_zip_btn.clicked.connect(self.manual_import)
+        copy_import_folder_btn = QToolButton()
+        copy_import_folder_btn.setObjectName("WireIconButton")
+        copy_import_folder_btn.setIcon(copy_icon())
+        copy_import_folder_btn.setIconSize(QSize(18, 18))
+        copy_import_folder_btn.setToolTip("Copy AI response folder path")
+        copy_import_folder_btn.clicked.connect(self.copy_import_folder_path)
+        import_button_row = QHBoxLayout()
+        import_button_row.setSpacing(7)
+        import_button_row.addWidget(import_zip_btn, 1)
+        import_button_row.addWidget(copy_import_folder_btn)
         import_actions.addWidget(self.review_btn)
-        import_actions.addWidget(import_zip_btn)
+        import_actions.addLayout(import_button_row)
         import_actions.addStretch(1)
         import_content.addLayout(import_actions)
         il.addLayout(import_content)
@@ -1316,6 +1326,11 @@ public static class TransferLoopWin32 {{
                 self.pending_badge.setText(f"AI Response · {len(inspection.changes)}")
                 self.pending_badge.setVisible(True)
                 break
+
+    def copy_import_folder_path(self):
+        folder = str(self.settings.download_folder)
+        QApplication.clipboard().setText(folder)
+        self.import_status.setText(f"Copied AI response folder path to clipboard:\n{folder}")
 
     def manual_import(self):
         if not self.model:
