@@ -24,6 +24,7 @@ from core.importer import ImportInspection, inspect_zip, inspect_zip_detailed, u
 from core.project import ProjectDiskSnapshot, ProjectModel, likely_text_file
 from core.storage import AppSettings
 from .editor_workspace import EditorWorkspace
+from .elided_label import ElidedLabel
 from .icons import copy_icon, folder_icon, pencil_icon
 from .markdown_editor import MarkdownEditorDialog
 from .settings_dialog import SettingsDialog
@@ -50,6 +51,8 @@ class ProjectPage(QWidget):
         self.last_export_paths: tuple[str, ...] = ()
         self.last_deleted_paths: tuple[str, ...] = ()
         self.scanned_zip_signatures: set[str] = set()
+        self._zip_signature_cache: dict[str, tuple[int, int, str]] = {}
+        self.review_in_progress = False
         self._updating_checks = False
         self.editor_sidebar_preferred = True
         self._project_disk_snapshot: ProjectDiskSnapshot | None = None
@@ -204,6 +207,8 @@ class ProjectPage(QWidget):
         self.session_hint = QLabel("The first full export establishes project context for a new AI conversation.")
         self.session_hint.setObjectName("HelpText")
         self.session_hint.setWordWrap(True)
+        self.session_hint.setMinimumWidth(0)
+        self.session_hint.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         sl.addLayout(session_head)
         sl.addWidget(self.session_hint)
         right_layout.addWidget(session)
@@ -218,6 +223,8 @@ class ProjectPage(QWidget):
         self.export_info = QLabel("")
         self.export_info.setObjectName("HelpText")
         self.export_info.setWordWrap(True)
+        self.export_info.setMinimumWidth(0)
+        self.export_info.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         el.addWidget(et)
         el.addWidget(self.export_info)
 
@@ -226,9 +233,8 @@ class ProjectPage(QWidget):
         el.addWidget(destination_title)
         destination_row = QHBoxLayout()
         destination_row.setSpacing(8)
-        self.export_folder_label = QLabel("")
+        self.export_folder_label = ElidedLabel("")
         self.export_folder_label.setObjectName("PathValue")
-        self.export_folder_label.setWordWrap(False)
         choose_export_folder = QToolButton()
         choose_export_folder.setObjectName("WireIconButton")
         choose_export_folder.setIcon(folder_icon())
@@ -281,16 +287,16 @@ class ProjectPage(QWidget):
 
         latest_surface = QFrame()
         latest_surface.setObjectName("InlineCard")
+        latest_surface.setMinimumHeight(72)
         export_row = QHBoxLayout(latest_surface)
         export_row.setContentsMargins(10, 8, 8, 8)
         export_row.setSpacing(7)
         export_text = QVBoxLayout()
-        export_text.setSpacing(2)
+        export_text.setSpacing(3)
         zip_kind = QLabel("Project ZIP")
         zip_kind.setObjectName("ArtifactKind")
-        self.last_export_label = QLabel("No export created yet")
+        self.last_export_label = ElidedLabel("No export created yet")
         self.last_export_label.setObjectName("LatestExportName")
-        self.last_export_label.setWordWrap(True)
         self.last_export_meta = QLabel("Create an export to generate the project ZIP and companion AI instructions.")
         self.last_export_meta.setObjectName("HelpText")
         self.last_export_meta.setWordWrap(True)
@@ -318,16 +324,16 @@ class ProjectPage(QWidget):
 
         instructions_surface = QFrame()
         instructions_surface.setObjectName("InlineCard")
+        instructions_surface.setMinimumHeight(72)
         instructions_row = QHBoxLayout(instructions_surface)
         instructions_row.setContentsMargins(10, 8, 8, 8)
         instructions_row.setSpacing(7)
         instructions_text = QVBoxLayout()
-        instructions_text.setSpacing(2)
+        instructions_text.setSpacing(3)
         instructions_kind = QLabel("AI Instructions")
         instructions_kind.setObjectName("ArtifactKind")
-        self.instructions_label = QLabel("AI instructions will be generated beside the ZIP")
+        self.instructions_label = ElidedLabel("AI instructions will be generated beside the ZIP")
         self.instructions_label.setObjectName("LatestExportName")
-        self.instructions_label.setWordWrap(True)
         self.instructions_meta = QLabel("Copy them into the AI chat or upload the Markdown file with the project ZIP.")
         self.instructions_meta.setObjectName("HelpText")
         self.instructions_meta.setWordWrap(True)
@@ -366,6 +372,8 @@ class ProjectPage(QWidget):
         self.import_status = QLabel("Waiting for a new AI response ZIP…")
         self.import_status.setObjectName("HelpText")
         self.import_status.setWordWrap(True)
+        self.import_status.setMinimumWidth(0)
+        self.import_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         il.addWidget(it)
         import_content = QHBoxLayout()
         import_content.setSpacing(16)
@@ -535,6 +543,7 @@ class ProjectPage(QWidget):
         if self.pending_import:
             self.pending_import.cleanup()
         self.pending_import = None
+        self.review_in_progress = False
         self.review_btn.setVisible(False)
         self.pending_badge.setVisible(False)
 
@@ -1289,18 +1298,36 @@ public static class TransferLoopWin32 {{
         self._update_compact_text_width(self.pending_badge, 38)
         self.pending_badge.setVisible(True)
 
+    def _response_zip_signature(self, zip_path: Path) -> str:
+        """Hash a response ZIP once per unchanged path/size/mtime tuple."""
+        resolved = str(zip_path.resolve())
+        st = zip_path.stat()
+        cached = self._zip_signature_cache.get(resolved)
+        metadata = (st.st_size, st.st_mtime_ns)
+        if cached and cached[:2] == metadata:
+            return cached[2]
+        signature = zip_signature(zip_path)
+        self._zip_signature_cache[resolved] = (metadata[0], metadata[1], signature)
+        return signature
+
     def reset_zip_baseline(self):
         self.scanned_zip_signatures.clear()
+        self._zip_signature_cache.clear()
         folder = Path(self.settings.download_folder)
         if folder.exists():
             for zip_path in folder.glob("*.zip"):
                 try:
-                    self.scanned_zip_signatures.add(zip_signature(zip_path))
+                    self.scanned_zip_signatures.add(self._response_zip_signature(zip_path))
                 except OSError:
                     pass
 
     def poll_downloads(self):
-        if not self.model or not self.settings.monitor_downloads or self.pending_import:
+        if (
+            not self.model
+            or not self.settings.monitor_downloads
+            or self.pending_import
+            or self.review_in_progress
+        ):
             return
         folder = Path(self.settings.download_folder)
         if not folder.exists():
@@ -1309,7 +1336,7 @@ public static class TransferLoopWin32 {{
             return
         for zip_path in sorted(folder.glob("*.zip"), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
             try:
-                sig = zip_signature(zip_path)
+                sig = self._response_zip_signature(zip_path)
             except OSError:
                 continue
             if sig in self.scanned_zip_signatures or sig in self.model.state.seen_zip_signatures:
@@ -1340,7 +1367,7 @@ public static class TransferLoopWin32 {{
             return
         zip_path = Path(path)
         try:
-            sig = zip_signature(zip_path)
+            sig = self._response_zip_signature(zip_path)
         except OSError:
             sig = ""
         if sig:
@@ -1399,12 +1426,14 @@ public static class TransferLoopWin32 {{
 
             inspection = self.pending_import
             self.pending_import = None
+            self.review_in_progress = True
             self.review_btn.setVisible(False)
             self.pending_badge.setVisible(False)
             self.review_requested.emit(self.model, inspection)
 
     def restore_pending_review(self, inspection: ImportInspection | None):
         """Return a paused review to the project page without discarding staged files."""
+        self.review_in_progress = False
         if not inspection:
             return
         if not self.model:
@@ -1423,6 +1452,10 @@ public static class TransferLoopWin32 {{
         self.pending_badge.setText(f"AI Response · {len(inspection.changes)}")
         self._update_compact_text_width(self.pending_badge, 38)
         self.pending_badge.setVisible(True)
+
+    def review_completed(self):
+        """Release the watcher guard after the active response review is finished."""
+        self.review_in_progress = False
 
     def refresh_status(self, message: str = ""):
         if not self.model:

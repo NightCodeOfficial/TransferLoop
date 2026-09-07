@@ -66,8 +66,13 @@ class ImportInspection:
 
 
 def zip_signature(path: Path) -> str:
-    st = path.stat()
-    return f"{path.resolve()}::{st.st_size}::{st.st_mtime_ns}"
+    """Return a stable content fingerprint for an AI response ZIP.
+
+    The response watcher must treat renamed/copied ZIPs and timestamp-only changes
+    as the same response.  Using the archive bytes rather than path/mtime prevents
+    an already-reviewed response from being rediscovered under a different name.
+    """
+    return f"sha256:{sha256_file(path)}"
 
 
 def normalize_response_path(raw: object) -> str | None:

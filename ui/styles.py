@@ -72,6 +72,7 @@ QLabel#PathValue {
     border: 1px solid #252b39;
     border-radius: 9px;
     padding: 8px 10px;
+    min-height: 20px;
 }
 QLabel#SessionValue {
     color: #b8b1ff;
@@ -86,6 +87,7 @@ QLabel#SessionValue {
 QLabel#LatestExportName {
     color: #dfe3ed;
     font-weight: 600;
+    min-height: 18px;
 }
 QLabel#Good {
     color: #79dda0;
@@ -479,6 +481,7 @@ QLabel#ArtifactKind {
     font-size: 8.8pt;
     font-weight: 700;
     letter-spacing: 0.3px;
+    min-height: 16px;
 }
 QLabel#EditorTitle {
     color: #f6f7fb;

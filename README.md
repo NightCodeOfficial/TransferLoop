@@ -1,6 +1,6 @@
 # TransferLoop
 
-**Version 0.1.9**
+**Version 0.1.10**
 
 **Keep your local project in the loop with browser-based AI.**
 
@@ -198,6 +198,8 @@ Example `.ai-response.json`:
 
 TransferLoop checks the ZIP contents against the local project instead of relying only on the manifest. It rejects unsafe manifest paths, wrong-session responses, duplicate/case-colliding manifest paths, and unsupported manifest versions. When `export_id` is present, conflicts are checked against the exact retained baseline for that export. Conflict warnings are conservative by default, but the review dialog provides an explicit **Ignore Warning and Overwrite** action for intentional replacements; accepted overwritten paths become the new synchronized local state after apply.
 
+Incoming response ZIPs are fingerprinted by their SHA-256 content rather than filename/timestamp. Renaming, copying, or touching the same response therefore does not make TransferLoop treat it as a new response. Automatic response-folder scanning is also paused while the Review screen owns a response, preventing a second copy from being queued during acceptance.
+
 A missing file in a response ZIP is not treated as deleted. Deletions must be listed with `"action": "deleted"`. Changed exports also tell the AI when a previously synchronized local file was deleted, even though that deleted file cannot be present in the ZIP.
 
 
@@ -206,6 +208,8 @@ A missing file in a response ZIP is not treated as deleted. Deletions must be li
 
 
 ## Project status
+
+- **Responsive dynamic labels:** long export filenames, instruction filenames, export paths, and recent-project paths elide cleanly with full-text tooltips instead of crowding adjacent UI.
 
 TransferLoop is under active development.
 

@@ -113,6 +113,7 @@ class MainWindow(QMainWindow):
         self.animate_page(self.review)
 
     def review_finished(self, message: str):
+        self.project.review_completed()
         self.project.after_external_project_change(message)
         self.animate_page(self.project)
 

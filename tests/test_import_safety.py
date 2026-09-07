@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import tempfile
 import unittest
 import zipfile
@@ -233,6 +235,30 @@ class ImportSafetyTests(unittest.TestCase):
         self.assertIn("rolled back", str(ctx.exception))
         self.assertEqual("old\n", (self.project / "app.py").read_text(encoding="utf-8"))
         self.assertEqual("other old\n", (self.project / "other.py").read_text(encoding="utf-8"))
+
+    def test_zip_signature_uses_content_not_path_or_timestamp(self) -> None:
+        original = self.base / "response_signature.zip"
+        with zipfile.ZipFile(original, "w") as zf:
+            zf.writestr(".ai-response.json", '{"format_version": 1}')
+            zf.writestr("file.txt", "same bytes")
+
+        duplicate = self.base / "response_signature (1).zip"
+        shutil.copy2(original, duplicate)
+        # Give the copy a deliberately different timestamp; content identity should win.
+        stat = duplicate.stat()
+        os.utime(duplicate, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+
+        self.assertEqual(importer.zip_signature(original), importer.zip_signature(duplicate))
+
+    def test_zip_signature_changes_when_response_bytes_change(self) -> None:
+        first = self.base / "signature_first.zip"
+        second = self.base / "signature_second.zip"
+        with zipfile.ZipFile(first, "w") as zf:
+            zf.writestr("file.txt", "version one")
+        with zipfile.ZipFile(second, "w") as zf:
+            zf.writestr("file.txt", "version two")
+
+        self.assertNotEqual(importer.zip_signature(first), importer.zip_signature(second))
 
 
 if __name__ == "__main__":

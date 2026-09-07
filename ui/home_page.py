@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from core.storage import AppSettings
 from .icons import copy_icon, folder_icon, trash_icon
+from .elided_label import ElidedLabel
 
 
 class RecentProjectCard(QFrame):
@@ -54,9 +55,8 @@ class RecentProjectCard(QFrame):
         path_row.setContentsMargins(0, 0, 0, 0)
         path_row.setSpacing(7)
 
-        path_label = QLabel(str(path))
+        path_label = ElidedLabel(str(path))
         path_label.setObjectName("RecentProjectPath")
-        path_label.setToolTip(str(path))
         path_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         path_row.addWidget(path_label, 1)
 
