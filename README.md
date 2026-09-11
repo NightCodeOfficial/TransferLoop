@@ -1,6 +1,6 @@
 # TransferLoop
 
-**Version 0.1.10**
+**Version 0.1.12**
 
 **Keep your local project in the loop with browser-based AI.**
 
@@ -29,7 +29,7 @@ TransferLoop keeps the AI interation "manual" by making the local side of the wo
 3. When starting a new AI conversation, use **Initialize AI Session — Export All**. TransferLoop creates:
    - the project ZIP
    - a separate `*_AI_INSTRUCTIONS.md` file
-4. Click "select in explorer" to highlight both files in explorer
+4. Click the **Select** action to highlight both files in Explorer or your Linux file manager (when the desktop supports multi-file reveal)
 5. Upload both files to your browser-based AI.
 5. Work with the AI normally until you want it to make project changes.
 6. Download the returned ZIP into the watched response folder, or use **Import ZIP**. The copy button beside **Import ZIP** copies the configured response-folder path to the clipboard.
@@ -41,27 +41,41 @@ TransferLoop keeps the AI interation "manual" by making the local side of the wo
 
 ## Installation
 
-### Windows source release
-
-
 Requirements:
 
 - Python 3.10 or newer
 - an internet connection the first time dependencies are installed
+- a graphical desktop session supported by Qt/PySide6
 
-To run TransferLoop:
+### Windows
 
 1. Download or clone the project.
 2. Make sure Python 3.10 or newer is installed.
 3. Double-click `run.bat`.
 
-`run.bat` handles the local setup:
+### Linux
 
-- checks that Python is installed
-- creates `.venv` inside the TransferLoop project folder
-- installs the packages in `requirements.txt` the first time it runs
-- reinstalls dependencies if `requirements.txt` changes
-- starts TransferLoop with the project-local virtual environment
+1. Download or clone the project.
+2. Make sure Python 3.10 or newer and Python's `venv` module are installed.
+3. Run `./run.sh` from a terminal. If the executable bit was not preserved when the source was downloaded, run `bash run.sh` instead.
+
+On Debian/Ubuntu, the Python prerequisite can typically be installed with:
+
+```bash
+sudo apt install python3 python3-venv
+```
+
+Both launchers handle the same local setup:
+
+- check that a supported Python version is installed
+- create `.venv` inside the TransferLoop project folder
+- install the packages in `requirements.txt` the first time they run
+- reinstall dependencies if `requirements.txt` changes
+- start TransferLoop with the project-local virtual environment
+
+On Linux, TransferLoop stores application data under `$XDG_DATA_HOME/TransferLoop` when `XDG_DATA_HOME` is set, otherwise under `~/.local/share/TransferLoop`. The **Select in File Manager** action uses the freedesktop FileManager1 interface when the desktop provides it and otherwise opens the containing folder.
+
+If PySide6 reports that the Qt `xcb` platform plugin cannot be initialized on a minimal Debian/Ubuntu desktop, install the missing desktop libraries for your distribution. A common starting point is `libxcb-cursor0` and `libxkbcommon-x11-0`.
 
 The `.venv` folder is local to the project and is excluded from TransferLoop exports by `.aiignore`.
 

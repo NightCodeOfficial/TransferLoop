@@ -15,6 +15,9 @@ LEGACY_APP_NAMES = ("AIProjectSync",)
 def _app_data_root() -> Path:
     if os.name == "nt":
         return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    xdg_data_home = os.environ.get("XDG_DATA_HOME", "").strip()
+    if xdg_data_home:
+        return Path(xdg_data_home).expanduser()
     return Path.home() / ".local" / "share"
 
 

@@ -23,6 +23,7 @@ from core.ignore import DEFAULT_AIIGNORE, add_pattern, is_ignored, load_patterns
 from core.importer import ImportInspection, inspect_zip, inspect_zip_detailed, undo_last_apply, zip_signature
 from core.project import ProjectDiskSnapshot, ProjectModel, likely_text_file
 from core.storage import AppSettings
+from core.platform_utils import show_items_in_linux_file_manager
 from .editor_workspace import EditorWorkspace
 from .elided_label import ElidedLabel
 from .icons import copy_icon, folder_icon, pencil_icon
@@ -270,7 +271,7 @@ class ProjectPage(QWidget):
         latest_header.setSpacing(8)
         latest_title = QLabel("Ready for AI")
         latest_title.setObjectName("FieldLabel")
-        self.select_ready_files_btn = QPushButton("Select in Explorer")
+        self.select_ready_files_btn = QPushButton(self.ready_files_button_text())
         self.select_ready_files_btn.setObjectName("Secondary")
         self.select_ready_files_btn.setIcon(folder_icon())
         self.select_ready_files_btn.setIconSize(QSize(16, 16))
@@ -1009,14 +1010,28 @@ class ProjectPage(QWidget):
                 paths.append(artifact.resolve())
         return paths
 
+    @staticmethod
+    def ready_files_button_text() -> str:
+        if sys.platform.startswith("win"):
+            return "Select in Explorer"
+        if sys.platform == "darwin":
+            return "Show in Finder"
+        return "Select in File Manager"
+
     def update_ready_files_button(self):
         paths = self.ready_artifact_paths()
         multiple = len(paths) > 1
+        self.select_ready_files_btn.setText(self.ready_files_button_text())
         self.select_ready_files_btn.setVisible(multiple)
         self.select_ready_files_btn.setEnabled(multiple)
         if multiple:
+            manager = (
+                "File Explorer"
+                if sys.platform.startswith("win")
+                else ("Finder" if sys.platform == "darwin" else "your file manager")
+            )
             self.select_ready_files_btn.setToolTip(
-                f"Open File Explorer and select all {len(paths)} generated Ready for AI files so they can be dragged into the browser chat"
+                f"Open {manager} and select all {len(paths)} generated Ready for AI files so they can be dragged into the browser chat"
             )
 
     def select_ready_artifacts_in_explorer(self):
@@ -1040,6 +1055,15 @@ class ProjectPage(QWidget):
             return
 
         folder = next(iter(parents))
+        if sys.platform.startswith("linux"):
+            if show_items_in_linux_file_manager(paths):
+                self.refresh_status(f"Selected {len(paths)} Ready for AI files in the file manager.")
+            else:
+                self.reveal_path(folder)
+                self.refresh_status(
+                    f"Opened the Ready for AI folder containing {len(paths)} files; this desktop does not expose multi-file selection."
+                )
+            return
         if not sys.platform.startswith("win"):
             self.reveal_path(folder)
             self.refresh_status(f"Opened the Ready for AI folder containing {len(paths)} files.")
@@ -1204,8 +1228,11 @@ public static class TransferLoopWin32 {{
                     os.startfile(str(path))  # type: ignore[attr-defined]
             elif sys.platform == "darwin":
                 subprocess.Popen(["open", str(path)])
+            elif path.is_file() and show_items_in_linux_file_manager([path]):
+                return
             else:
-                subprocess.Popen(["xdg-open", str(path if path.is_dir() else path.parent)])
+                target = path if path.is_dir() else path.parent
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.resolve())))
         except Exception:
             pass
 
