@@ -1,0 +1,65 @@
+# TransferLoop local project context (may contain private paths and history)
+.aimemory
+.aiignore
+PROJECT_MAP.json
+.ai-response.json
+*_AI_INSTRUCTIONS.md
+
+# Synchronization conflict copies named after a local computer
+*-laptop-*
+*-desktop-*
+* (conflicted copy *
+
+# Python environments and caches
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Tests are kept locally; the public repository is a runtime-source release
+tests/
+
+# Generated builds and installers
+build/
+dist/
+*.egg-info/
+*.spec
+
+# Local configuration, secrets, and machine-specific data
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+
+# Temporary files, logs, backups and export archives
+.cache/
+*.log
+*.tmp
+*.bak
+*.orig
+*.swp
+*.swo
+*.zip
+*.7z
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
